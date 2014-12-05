@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ETH Chat</title>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="./lib/bootstrap/css/bootstrap.min.css">
+  <script src="./lib/jquery/jquery-1.11.1.min.js"></script>
+  <script src="./lib/bootstrap/js/bootstrap.min.js"></script>  
+  <link href="./style.css" rel="stylesheet" type="text/css">
+
+  <script language="javascript"  defer="defer">
+	// Contract address (0x + address).
+	// Change the address with your contract address.
+	var contractAddress = '0x' + 'a82e47dda3c6cf9e4d5e685a2a5d6b722c992d00';
+	var idToNameContract = eth.stateAt(contractAddress, 4);
+	//var nameToIdContract = eth.stateAt(idToNameContract, 1);
+	var sizeOfMsg = 6; // author + message -> 1 + 5 (*32 bytes)
+	
+	// Return the register name of a given id
+	function registerName(name) {
+		eth.transact({to: idToNameContract, data: [document.getElementById("name").value], gas: 5000});
+	}	
+	
+	// Return the register name of a given id
+	function getName(id) {
+		return (eth.stateAt(idToNameContract, id));
+	}
+	
+	function sendMessage() {
+		var text = document.getElementById("message").value;		
+		var data = splitMessage(text);
+		data.unshift('1');
+		
+		// data = ['1', msg[0, ..., 31], msg[32, ..., 64], etc.]
+		eth.transact({to: contractAddress, data: data, gas: 5000});
+		
+		document.getElementById("message").value = "";
+	}
+	
+	// Split the message into blocks of 32 bytes.
+	function splitMessage(text){
+		var sub = new Array(sizeOfMsg);
+			
+		for(var i = 0; i < sizeOfMsg-1; i++){
+			sub[i] = eth.fromAscii(text.substring(i*32, i*32+32));
+		}
+		
+		return sub;
+	}
+	
+	// Write all messages stored in the contract on the wall
+	function getMessages() {
+		var numMessages = eth.toDecimal(eth.stateAt(contractAddress, 5)) - 1;
+		var text = "";
+		
+		for(var i = 1; i <= numMessages; i++){			
+			text = text.concat(getMessage(i));
+		}
+		
+		document.getElementById('wall').innerHTML = text;
+	}
+	
+	// Return the message in the position 'pos' of the contract ready to be posted on the wall
+	// TODO: Clean HTML/code from the message
+	// TODO: scroll down on wall div when there are new messages
+	function getMessage(pos){
+		var text = "";
+		var code = "";
+		var author = eth.toAscii(eth.stateAt(idToNameContract, eth.stateAt(contractAddress, pos*sizeOfMsg)));
+		if(author == ""){
+			author = eth.stateAt(contractAddress, pos*sizeOfMsg);
+		}
+		
+		text = text.concat('<p class="message-chat"><span class="author-chat">&lt;' + author + '&gt;</span><br>');
+		
+		for(var i = 1; i < sizeOfMsg; i++){
+			code = eth.toAscii(eth.stateAt(contractAddress, pos*sizeOfMsg + i));
+			code = jQuery('<p>' + code + '</p>').text(); // Strip HTML
+			text = text.concat(code);
+		}
+		
+		text = text.concat('</p>');
+		
+		return text;
+	}
+	
+	function html2text(html) {
+		var tag = document.createElement('div');
+		tag.innerHTML = html;
+		return tag.textContent || tag.innerText || "";
+	}
+	
+	// Print a message on the wall when there is a new message in the contract
+	// TODO: see getMessage() 
+	eth.watch({altered: {at: 5, id: contractAddress, block: eth.defaultBlock}}).changed(
+		function() {
+			var olderNumMessages = document.getElementById('numMsgs').innerText;
+			var numMessages = eth.toDecimal(eth.stateAt(contractAddress, 5)) - 1;			
+			document.getElementById('numMsgs').innerText = numMessages;
+			
+			
+			var text = "";
+			//var currentMessage = getMessage(numMessages);
+			
+			for(var i = olderNumMessages; i <= numMessages; i++){			
+				var currentMessage = getMessage(i);		
+				
+				// To avoid double posts
+				var wallText = document.getElementById('wall').innerHTML;
+				var lastMessage = wallText.substring(wallText.length - currentMessage.length, wallText.length);
+				
+				if(lastMessage != currentMessage){
+					document.getElementById('wall').innerHTML = document.getElementById('wall').innerHTML.concat(currentMessage);
+				}
+			
+			}
+		}
+	);
+  </script>
+</head>
+<body>
+  <div class="topbar navbar-fixed-top">
+	<div class="container max-width-960">
+	  <ul class="nav nav-pills">
+	    <li class="logo"><img src="./images/eth.png" alt="ETH Chat" ></img></li>
+	    <li class="menu"><a href="javascript:location.reload()" >Refresh</a></li>
+	    <li class="menu"><a href="#" onclick="getMessages();">History <span class="badge" id="numMsgs"></span></a></li>
+		<li class="menu"><a href="#" onclick="$('#register').toggle()" >Register</a></li>
+	  </ul>
+	</div>
+  </div>
+  
+  <div class="container max-width-960">
+    <div id="register">
+	  <div class="input-group message-box">
+	    <input id="name" class="form-control" type="text" placeholder="Write your name here."></input>	
+	    <span class="input-group-btn">
+	      <button class="btn btn-default" onclick="registerName();">Register</button>
+	    </span>	
+	  
+	  </div>
+	  <br>
+	</div>
+    <div id="wall"></div>
+  </div>
+  
+  <div class="container max-width-960">    
+    <div class="input-group message-box">
+      <input id="message" class="form-control" type="text" placeholder="Write your text here, up to 160 characters."></input>
+	  
+      <span class="input-group-btn">
+	    <span class="btn btn-default label-default counter"><span class="label" id="counter">160</span></span>
+			<script>
+			document.getElementById('numMsgs').innerText = eth.toDecimal(eth.stateAt(contractAddress, 5)) - 1;
+				// Remaining Characters
+				$("#message").keyup(function(){
+					var count = 160 - $(this).val().length;
+					
+					if(count < 0){
+						$(".counter").attr('class', 'btn btn-default counter label-danger');
+					}else if(count < 15){
+						$(".counter").attr('class', 'btn btn-default counter label-warning');
+					}else{
+						$(".counter").attr('class', 'btn btn-default counter label-success');
+					}
+					
+					$("#counter").text(
+						(count)
+						
+					);
+				});
+				
+				// Send a message when the user press intro
+				$('#message').bind('keypress', function(e) {
+					if((e.keyCode || e.which) == 13){
+						sendMessage();
+					}
+				});
+			</script>		
+        <button class="btn btn-default" onclick="sendMessage();">Send</button>
+      </span>
+    </div>
+  </div>
+  
+</body>
+</html>

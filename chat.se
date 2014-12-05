@@ -1,0 +1,21 @@
+init:
+	# Number of messages + 1
+	contract.storage[5] = 1
+	contract.storage[4] = create("contracts/idToName.se")
+	
+code:
+	if msg.data[0] == 1:
+		# Number of slots occupied by each message (author_address + message)
+		# Remember that each message has a maximum length of 160 chars -> 160 bytes, and each slot has 32 bytes.
+		# slots(author_address) = 1
+		# slots(message) = 5 (160 bytes / 32 bytes = 5)
+		slots = 6
+		contract.storage[slots * contract.storage[5]] = msg.sender
+		
+		i = 1
+		while i < slots:
+			contract.storage[slots * contract.storage[5] + i] = msg.data[i]
+			i += 1
+		
+		contract.storage[5] += 1
+		return(1)
